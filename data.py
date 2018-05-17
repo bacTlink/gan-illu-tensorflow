@@ -47,6 +47,7 @@ def load_dataset(lists, batch_size):
     dataset = dataset.shuffle(buffer_size = cnt)
     dataset = dataset.map(_parse_function)
     dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(5 * batch_size)
 
     return cnt, dataset
 

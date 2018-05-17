@@ -33,7 +33,6 @@ class EDSR(object):
 
         conv = conv + conv1
 
-
         self.output = output = slim.conv2d(conv, 3, kernel_size, activation_fn = None)
 
         self.loss = tf.reduce_mean(tf.losses.absolute_difference(target, output))
@@ -45,14 +44,16 @@ class EDSR(object):
 
 
         #Scalar to keep track for loss
-        tf.summary.scalar("loss",self.loss)
-        tf.summary.scalar("MSE",self.MSE)
-        tf.summary.scalar("PSNR",self.PSNR)
+        sl = tf.summary.scalar("loss",self.loss)
+        sm = tf.summary.scalar("MSE",self.MSE)
+        sp = tf.summary.scalar("PSNR",self.PSNR)
         #Image summaries for input, target, and output
         for i in xrange(pics):
             tf.summary.image("input_image_" + str(i),tf.cast(self.input[:,:,:,i * 3:i * 3 + 3],tf.uint8))
         tf.summary.image("target_image",tf.cast(self.target,tf.uint8))
-        tf.summary.image("output_image",tf.cast(self.output,tf.uint8))
+        tf.summary.image("output_image",tf.cast(tf.clip_by_value(self.output, 0.0, 255.0),tf.uint8))
+        self.merged_summary = tf.summary.merge_all()
+        self.loss_summary = tf.summary.merge([sl, sm, sp])
         
         config = tf.ConfigProto(allow_soft_placement=True)
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.7)
@@ -78,7 +79,6 @@ class EDSR(object):
     def train(self, epoch, dataset_size, dataset, save_dir = 'snapshots/', savefile = 'model', logfile = 'train'):
         train_op = tf.train.AdamOptimizer().minimize(self.loss)
         init = tf.global_variables_initializer()
-        merged = tf.summary.merge_all()
         print("Begin training...")
         with self.sess as sess:
             #Initialize all variables
@@ -86,29 +86,31 @@ class EDSR(object):
             #create summary writer for train
             train_writer = tf.summary.FileWriter(os.path.join(save_dir, logfile),sess.graph)
 
-            iterator = dataset.make_initializable_iterator()
-            next_element = iterator.get_next()
             #This is our training loop
+            cnt = 0
             for i in range(epoch):
+                iterator = dataset.make_initializable_iterator()
+                next_element = iterator.get_next()
                 sess.run(iterator.initializer)
-                cnt = 0
                 print 'Epoch', i, 'Iter', cnt
                 while True:
-                    cnt += 1
                     try:
                         x, y = sess.run(next_element)
-                        #Create feed dictionary for the batch
-                        feed = {
-                                self.input:x,
-                                self.target:y
-                        }
-                        #Run the train op and calculate the train summary
-                        summary, _ = sess.run([merged,train_op],feed)
-                        #Write train summary for this step
-                        if ((i * dataset_size + cnt) % 10 == 0):
-                            print 'Epoch', i, 'Iter', cnt
-                            train_writer.add_summary(summary, i * dataset_size + cnt)
                     except tf.errors.OutOfRangeError:
                         break
+                    cnt += 1
+                    #Create feed dictionary for the batch
+                    feed = {
+                            self.input:x,
+                            self.target:y
+                    }
+                    if (cnt % 100 == 0):
+                        print 'Epoch', i, 'Iter', cnt
+                        #Run the train op and calculate the train summary
+                        summary, _ = sess.run([self.merged_summary,train_op],feed)
+                    else:
+                        summary, _ = sess.run([self.loss_summary,train_op],feed)
+                    #Write train summary for this step
+                    train_writer.add_summary(summary, cnt)
             #Save our trained model
             self.save()

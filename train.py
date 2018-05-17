@@ -3,6 +3,7 @@ from edsr import EDSR
 
 batch_size = 20
 model_name = 'edsr-10pic-8layer-3x3-64'
+#model_name = 'test'
 lists = [
         {'src_dir': '/data3/lzh/10000x672x672_torus2_diff', 'filelist': 'train_filelist.txt'},
         {'src_dir': '/data3/lzh/10000x672x672_box_diff', 'filelist': 'train_filelist.txt'},
