@@ -4,7 +4,7 @@ import os
 
 class EDSR(object):
     def resBlock(self, x):
-        conv1 = slim.conv2d(x, self.feature_size, self.kernel_size, activation_fn = tf.nn.relu)
+        conv1 = slim.conv2d(x, self.feature_size, self.kernel_size)
         conv2 = slim.conv2d(conv1, self.feature_size, self.kernel_size, activation_fn = None)
         #conv2 *= scaling
         return x + conv2
@@ -24,12 +24,11 @@ class EDSR(object):
         #self.scaling = scaling
         
         # First conv
-        conv1 = slim.conv2d(rough_pics, feature_size, kernel_size, activation_fn = None)
+        conv1 = slim.conv2d(rough_pics, feature_size, kernel_size)
         conv = conv1
 
         for i in xrange(num_layers):
             conv = self.resBlock(conv)
-        conv = slim.conv2d(conv, feature_size, kernel_size, activation_fn = None)
 
         conv = conv + conv1
 
@@ -63,28 +62,48 @@ class EDSR(object):
         print 'Build Network Done!'
 
     # Save the current state of the network to file
-    def save(self, savedir = 'saved_models', savefile = 'model'):
-        dst = os.path.join(savedir, savefile)
-        print("Saving to " + dst)
-        self.saver.save(self.sess, dst)
+    def save(self, save_dir = 'model/', save_file = 'model.ckpt', step = 0):
+        dst = os.path.join(save_dir, save_file)
+        print("Saving to:")
+        print '    ', self.saver.save(self.sess, dst, global_step = step)
         print("Saved!")
 
     # Resume network from previously saved weights
-    def resume(self,savedir='saved_models', savefile = 'model'):
-        src = os.path.join(savedir, savefile)
+    def resume(self, src = 'model/'):
         print("Restoring from " + src)
         self.saver.restore(self.sess,tf.train.latest_checkpoint(src))
-        print("Restored!")  
+        print("Restored!")
 
-    def train(self, epoch, dataset_size, dataset, save_dir = 'snapshots/', savefile = 'model', logfile = 'train'):
+    def test(self, dataset_size, dataset, dst_dir):
+        if not os.path.exists(dst_dir):
+            os.makedirs(dst_dir)
+        with self.sess as sess:
+            cnt = 0
+            iterator = dataset.make_initializable_iterator()
+            next_element = iterator.get_next()
+            sess.run(iterator.initializer)
+            while True:
+                try:
+                    base_filenames, x, y = sess.run(next_element)
+                except tf.errors.OutOfRangeError:
+                    break
+                res = sess.run(self.output, {self.input: x})
+                res = tf.cast(tf.clip_by_value(res, 0.0, 255.0), tf.uint8)
+                for i in xrange(res.shape[0]):
+                    enc = tf.image.encode_jpeg(res[i,:,:,:])
+                    filename = os.path.join(dst_dir, 'test' + base_filenames[i] + '.jpg')
+                    print filename
+                    fwrite = tf.write_file(tf.constant(filename), enc)
+                    sess.run(fwrite)
+
+    def train(self, epoch, dataset_size, dataset, model_name):
         train_op = tf.train.AdamOptimizer().minimize(self.loss)
         init = tf.global_variables_initializer()
         print("Begin training...")
         with self.sess as sess:
-            #Initialize all variables
             sess.run(init)
             #create summary writer for train
-            train_writer = tf.summary.FileWriter(os.path.join(save_dir, logfile),sess.graph)
+            train_writer = tf.summary.FileWriter(os.path.join('logs/', model_name),sess.graph)
 
             #This is our training loop
             cnt = 0
@@ -95,7 +114,7 @@ class EDSR(object):
                 print 'Epoch', i, 'Iter', cnt
                 while True:
                     try:
-                        x, y = sess.run(next_element)
+                        base_filename, x, y = sess.run(next_element)
                     except tf.errors.OutOfRangeError:
                         break
                     cnt += 1
@@ -104,13 +123,14 @@ class EDSR(object):
                             self.input:x,
                             self.target:y
                     }
-                    if (cnt % 100 == 0):
-                        print 'Epoch', i, 'Iter', cnt
-                        #Run the train op and calculate the train summary
-                        summary, _ = sess.run([self.merged_summary,train_op],feed)
+                    if (cnt % 100 == 0) or (cnt <= 100):
+                        summary = self.merged_summary
                     else:
-                        summary, _ = sess.run([self.loss_summary,train_op],feed)
-                    #Write train summary for this step
+                        summary = self.loss_summary
+                    #Run the train op and calculate the train summary
+                    summary, MSE, _ = sess.run([summary, self.MSE, train_op],feed)
+
+                    print 'Epoch', i, 'Iter', cnt, "MSE:", MSE
                     train_writer.add_summary(summary, cnt)
-            #Save our trained model
-            self.save()
+                #Save our trained model
+                self.save(save_dir = model_name + '/', save_file = model_name + '.ckpt', step = i)
