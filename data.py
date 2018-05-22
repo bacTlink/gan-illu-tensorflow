@@ -2,7 +2,7 @@ import tensorflow as tf
 import os
 import random
 
-def _parse_function_with_crop_size(crop_size = 0):
+def _parse_function_with_crop_size(crop_size = 0, flip = False):
     def _parse_function(base_filename, data, label):
         data_imgs = []
         for i in range(data.shape[0]):
@@ -14,16 +14,17 @@ def _parse_function_with_crop_size(crop_size = 0):
         merged = tf.concat((label_img, data_imgs), 2)
         if crop_size != 0:
             merged = tf.random_crop(merged, [crop_size, crop_size, data.shape[0] * 3 + 3])
-        if (random.randint(0, 1) == 0):
-            merged = tf.image.flip_left_right(merged)
-        if (random.randint(0, 1) == 0):
-            merged = tf.image.flip_up_down(merged)
+        if flip:
+            if (random.randint(0, 1) == 0):
+                merged = tf.image.flip_left_right(merged)
+            if (random.randint(0, 1) == 0):
+                merged = tf.image.flip_up_down(merged)
         label_img = merged[:, :, 0:3]
         data_imgs = merged[:, :, 3:]
         return base_filename, data_imgs, label_img
     return _parse_function
 
-def load_dataset(lists, batch_size, crop_size = 0):
+def load_dataset(lists, batch_size, crop_size = 0, shuffle = False, flip = False):
     base_filenames = []
     labels = []
     data = []
@@ -50,8 +51,9 @@ def load_dataset(lists, batch_size, crop_size = 0):
     data = tf.constant(data)
 
     dataset = tf.data.Dataset.from_tensor_slices((base_filenames, data, labels))
-    dataset = dataset.shuffle(buffer_size = cnt)
-    dataset = dataset.map(_parse_function_with_crop_size(crop_size = crop_size))
+    if shuffle:
+        dataset = dataset.shuffle(buffer_size = cnt)
+    dataset = dataset.map(_parse_function_with_crop_size(crop_size = crop_size, flip = flip))
     dataset = dataset.batch(batch_size)
     dataset = dataset.prefetch(5 * batch_size)
 

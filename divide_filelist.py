@@ -28,5 +28,6 @@ if __name__ == "__main__":
             {'src_dir': '/data3/lzh/10000x672x672_box_diff', 'filelist': 'filelist.txt'},
             {'src_dir': '/data3/lzh/10000x672x672_box3_diff', 'filelist': 'filelist.txt'},
             {'src_dir': '/data3/lzh/10000x672x672_Diamond_diff', 'filelist': 'filelist.txt'}
+            {'src_dir': '/data3/lzh/10000x672x672_conference_diff', 'filelist': 'filelist.txt'}
             ]
     divide_filelists(lists)

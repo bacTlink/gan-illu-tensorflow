@@ -77,6 +77,7 @@ class EDSR(object):
     def test(self, dataset_size, dataset, dst_dir):
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
+        max_MSE = 0
         with self.sess as sess:
             cnt = 0
             iterator = dataset.make_initializable_iterator()
@@ -87,8 +88,10 @@ class EDSR(object):
                     base_filenames, x, y = sess.run(next_element)
                 except tf.errors.OutOfRangeError:
                     break
-                res = sess.run(self.output, {self.input: x})
+                res, MSE = sess.run([self.output, self.MSE], {self.input: x, self.target: y})
                 res = tf.cast(tf.clip_by_value(res, 0.0, 255.0), tf.uint8)
+                max_MSE = max(max_MSE, MSE)
+                print max_MSE
                 for i in xrange(res.shape[0]):
                     enc = tf.image.encode_jpeg(res[i,:,:,:])
                     filename = os.path.join(dst_dir, 'test' + base_filenames[i] + '.jpg')
